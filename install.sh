@@ -31,13 +31,13 @@ apt-get install mongodb-10gen -qqy
 
 echo Installing remaining packages
 apt-get update
-apt-get install lxc-docker tsuru-server beanstalkd redis-server node-hipache gandalf-server -qqy
+apt-get install screen mercurial git bzr lxc-docker beanstalkd redis-server node-hipache gandalf-server -qqy
 
 echo Starting hipache
 start hipache
 
 echo Configuring and starting Docker
-
+echo -e "\nexport DOCKER_HOST=127.0.0.1:4243" >> .bashrc
 sed -i.old -e 's;-d;-d -H tcp://127.0.0.1:4243;' /etc/init/docker.conf
 rm /etc/init/docker.conf.old
 stop docker
@@ -54,10 +54,6 @@ echo Configuring Gandalf
 cp /vagrant/gandalf.conf /etc/gandalf.conf
 sed -i.old -e "s/{{{HOST_IP}}}/${host_ip}/" /etc/gandalf.conf
 
-echo Exporting TSURU_HOST AND TSURU_TOKEN env variables
-token=$(/usr/bin/tsr token)
-echo -e "export TSURU_TOKEN=$token\nexport TSURU_HOST=http://127.0.0.1:8080" | sudo -u git tee -a ~git/.bash_profile
-
 echo Starting Gandalf
 start gandalf-server
 
@@ -73,18 +69,34 @@ START=yes
 EOF
 service beanstalkd start
 
-echo Configuring and starting Tsuru
-cp /vagrant/tsuru.conf /etc/tsuru/tsuru.conf
-sed -i.old -e "s/{{{HOST_IP}}}/${host_ip}/" /etc/tsuru/tsuru.conf
-sed -i.old -e 's/=no/=yes/' /etc/default/tsuru-server
-rm /etc/default/tsuru-server.old /etc/tsuru/tsuru.conf.old
-start tsuru-ssh-agent
-start tsuru-server-api
-start tsuru-server-collector
-
 echo Installing python platform
-curl -O https://raw.github.com/globocom/tsuru/master/misc/platforms-setup.js
+curl -OL https://raw.github.com/globocom/tsuru/master/misc/platforms-setup.js
 mongo tsuru platforms-setup.js
 
-git clone https://github.com/flaviamissi/basebuilder
-#(cd basebuilder/python/ && docker -H 127.0.0.1:4243 build -t "tsuru/python" .)
+echo Configuring GO
+VAGRANT_HOME=/home/vagrant
+GOPATH=$VAGRANT_HOME/go
+PATH=$GOPATH/bin:$PATH
+sudo -u vagrant echo -e "\nexport GOPATH=$VAGRANT_HOME/go\nexport PATH=$GOPATH/bin:$PATH" >> .bashrc
+curl -O https://godeb.s3.amazonaws.com/godeb-amd64.tar.gz
+tar -zxpvf godeb-amd64.tar.gz
+./godeb install
+
+echo Configuring Tsuru
+mkdir -p /etc/tsuru
+cp /vagrant/tsuru.conf $/etc/tsuru/tsuru.conf
+sed -i.old -e "s/{{{HOST_IP}}}/${host_ip}/" $/etc/tsuru/tsuru.conf
+rm $/etc/tsuru/tsuru.conf.old
+
+echo Building Tsuru
+sudo -u vagrant mkdir -p $GOPATH/src/github.com/globocom
+sudo -u vagrant ln -s $VAGRANT_HOME/tsuru_projects/tsuru $GOPATH/src/github.com/globocom/tsuru
+sudo -E -u vagrant go get github.com/globocom/tsuru/cmd/tsr
+
+echo Exporting TSURU_HOST AND TSURU_TOKEN env variables
+token=$($GOPATH/bin/tsr token)
+echo -e "export TSURU_TOKEN=$token\nexport TSURU_HOST=http://127.0.0.1:8080" | sudo -u git tee -a ~git/.bash_profile
+
+echo Running Tsuru
+sudo -u vagrant yes | ssh-keygen -t rsa -b 4096 -N "" -f $VAGRANT_HOME/.ssh/id_rsa
+su - vagrant -c "/vagrant/tsr-screen.sh"
