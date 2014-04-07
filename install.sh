@@ -46,7 +46,7 @@ start docker
 echo Installing bare-template for Gandalf repositories
 hook_dir=/home/git/bare-template/hooks
 mkdir -p $hook_dir
-curl https://raw.github.com/globocom/tsuru/master/misc/git-hooks/post-receive -o ${hook_dir}/post-receive
+curl -L https://raw.github.com/tsuru/tsuru/master/misc/git-hooks/post-receive -o ${hook_dir}/post-receive
 chmod +x ${hook_dir}/post-receive
 chown -R git:git /home/git/bare-template
 
@@ -70,7 +70,7 @@ EOF
 service beanstalkd start
 
 echo Installing python platform
-curl -OL https://raw.github.com/globocom/tsuru/master/misc/platforms-setup.js
+curl -OL https://raw.github.com/tsuru/tsuru/master/misc/platforms-setup.js
 mongo tsuru platforms-setup.js
 
 echo Configuring GO
@@ -89,14 +89,16 @@ sed -i.old -e "s/{{{HOST_IP}}}/${host_ip}/" $/etc/tsuru/tsuru.conf
 rm $/etc/tsuru/tsuru.conf.old
 
 echo Building Tsuru
-sudo -u vagrant mkdir -p $GOPATH/src/github.com/globocom
-sudo -u vagrant ln -s $VAGRANT_HOME/tsuru_projects/tsuru $GOPATH/src/github.com/globocom/tsuru
-sudo -E -u vagrant go get github.com/globocom/tsuru/cmd/tsr
+sudo -u vagrant mkdir -p $GOPATH/src/github.com/tsuru
+sudo -u vagrant ln -s $VAGRANT_HOME/tsuru_projects/tsuru $GOPATH/src/github.com/tsuru/tsuru
+sudo -E -u vagrant go get github.com/tsuru/tsuru/cmd/tsr
 
 echo Exporting TSURU_HOST AND TSURU_TOKEN env variables
 token=$($GOPATH/bin/tsr token)
 echo -e "export TSURU_TOKEN=$token\nexport TSURU_HOST=http://127.0.0.1:8080" | sudo -u git tee -a ~git/.bash_profile
 
 echo Running Tsuru
-sudo -u vagrant yes | ssh-keygen -t rsa -b 4096 -N "" -f $VAGRANT_HOME/.ssh/id_rsa
+mkdir -p /var/lib/tsuru/.ssh
+chown -R vagrant:vagrant /var/lib/tsuru
+sudo -u vagrant yes | ssh-keygen -t rsa -b 4096 -N "" -f /var/lib/tsuru/.ssh/id_rsa
 su - vagrant -c "/vagrant/tsr-screen.sh"
